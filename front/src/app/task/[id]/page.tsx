@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ArrowLeft, Upload, CheckCircle2, XCircle, ChevronRight, ChevronDown, ChevronUp, Cpu, Image as ImageIcon, HardDrive, Activity, RefreshCw, Camera, CameraOff, Video, VideoOff, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
+import { ArrowLeft, Upload, CheckCircle2, XCircle, ChevronRight, ChevronDown, ChevronUp, Cpu, Image as ImageIcon, HardDrive, Activity, RefreshCw, Camera, CameraOff, Video, VideoOff, ChevronLeft, ChevronRight as ChevronRightIcon, RotateCw } from 'lucide-react';
 
 // 图片信息类型
 interface ImageInfo {
@@ -38,6 +38,9 @@ export default function TaskUploadPage() {
   const [isFileListExpanded, setIsFileListExpanded] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [resultsCurrentPage, setResultsCurrentPage] = useState(1);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
+  const [cameraDevices, setCameraDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string>('');
 
   // 每页显示的成功文件数量
   const RESULTS_PER_PAGE = 3;
@@ -162,19 +165,84 @@ export default function TaskUploadPage() {
   // 开始拍摄
   const handleStartCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' },
+      // 获取可用的摄像头设备
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter(device => device.kind === 'videoinput');
+      setCameraDevices(cameras);
+
+      // 构建视频约束
+      const constraints: MediaStreamConstraints = {
+        video: {
+          facingMode: facingMode,
+          width: { ideal: 1920 }, // 优先使用 1080p
+          height: { ideal: 1080 },
+          aspectRatio: { ideal: 16/9 }
+        },
         audio: false,
-      });
+      };
+
+      // 如果选择了特定的摄像头，使用设备ID
+      if (selectedCameraId) {
+        constraints.video = {
+          ...constraints.video as any,
+          deviceId: { exact: selectedCameraId }
+        } as any;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
       streamRef.current = stream;
       setIsCameraActive(true);
 
       // 视频元素会在 useEffect 中自动连接到 stream
-    } catch (error) {
+    } catch (error: any) {
       console.error('无法访问摄像头:', error);
-      alert('无法访问摄像头，请确保已授予权限');
+
+      // 提供详细的错误信息
+      if (error.name === 'NotAllowedError') {
+        alert('请允许访问摄像头以使用拍摄功能');
+      } else if (error.name === 'NotFoundError') {
+        alert('未找到摄像头设备');
+      } else if (error.name === 'NotReadableError') {
+        alert('摄像头可能被其他应用占用');
+      } else {
+        alert(`无法访问摄像头: ${error.message || '未知错误'}`);
+      }
     }
+  };
+
+  // 切换摄像头（前置/后置）
+  const handleSwitchCamera = async () => {
+    const wasActive = isCameraActive;
+
+    if (isCameraActive) {
+      handleStopCamera();
+    }
+
+    // 切换 facingMode
+    setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
+
+    // 如果之前是活跃状态，重新启动
+    if (wasActive) {
+      setTimeout(() => {
+        handleStartCamera();
+      }, 100);
+    }
+  };
+
+  // 选择摄像头
+  const handleSelectCamera = (deviceId: string) => {
+    const wasActive = isCameraActive;
+
+    if (isCameraActive) {
+      handleStopCamera();
+    }
+
+    setSelectedCameraId(deviceId);
+
+    setTimeout(() => {
+      handleStartCamera();
+    }, 100);
   };
 
   // 停止拍摄
@@ -448,7 +516,8 @@ export default function TaskUploadPage() {
             </div>
 
             {/* 拍摄按钮 */}
-            <div className="flex justify-center">
+            <div className="flex justify-center gap-3">
+              {/* 开始/停止拍摄按钮 */}
               <Button
                 onClick={handleToggleCamera}
                 className={`neon-button px-8 ${
@@ -468,7 +537,46 @@ export default function TaskUploadPage() {
                   </>
                 )}
               </Button>
+
+              {/* 切换摄像头按钮（仅在摄像头激活时显示） */}
+              {isCameraActive && (
+                <Button
+                  onClick={handleSwitchCamera}
+                  className="neon-button-secondary px-6"
+                  size="lg"
+                  title={facingMode === 'environment' ? '切换到前置摄像头' : '切换到后置摄像头'}
+                >
+                  <RotateCw className="h-5 w-5" />
+                  <span className="ml-2 hidden sm:inline">
+                    {facingMode === 'environment' ? '前置' : '后置'}
+                  </span>
+                </Button>
+              )}
             </div>
+
+            {/* 摄像头选择下拉（如果有多个摄像头） */}
+            {isCameraActive && cameraDevices.length > 1 && (
+              <div className="mt-4">
+                <label className="text-sm text-muted-foreground mb-2 block">
+                  选择摄像头:
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {cameraDevices.map((device) => (
+                    <button
+                      key={device.deviceId}
+                      onClick={() => handleSelectCamera(device.deviceId)}
+                      className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                        selectedCameraId === device.deviceId
+                          ? 'bg-purple-600 text-white neon-button'
+                          : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                      }`}
+                    >
+                      {device.label || `摄像头 ${device.deviceId.slice(0, 8)}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </Card>
 
           {/* 上传区域 */}
