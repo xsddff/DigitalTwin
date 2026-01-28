@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ArrowLeft, Upload, CheckCircle2, XCircle, ChevronRight, ChevronDown, ChevronUp, Cpu, Image as ImageIcon, HardDrive, Activity, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Upload, CheckCircle2, XCircle, ChevronRight, ChevronDown, ChevronUp, Cpu, Image as ImageIcon, HardDrive, Activity, RefreshCw, Camera, CameraOff, Video, VideoOff } from 'lucide-react';
 
 // 图片信息类型
 interface ImageInfo {
@@ -28,12 +28,15 @@ export default function TaskUploadPage() {
   const router = useRouter();
   const taskId = params.id as string;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const [images, setImages] = useState<ImageInfo[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [isFileListExpanded, setIsFileListExpanded] = useState(false);
+  const [isCameraActive, setIsCameraActive] = useState(false);
 
   // 生成粒子效果
   useEffect(() => {
@@ -142,6 +145,73 @@ export default function TaskUploadPage() {
       fileInputRef.current.value = '';
     }
   };
+
+  // 开始拍摄
+  const handleStartCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+        audio: false,
+      });
+
+      streamRef.current = stream;
+      setIsCameraActive(true);
+
+      // 视频元素会在 useEffect 中自动连接到 stream
+    } catch (error) {
+      console.error('无法访问摄像头:', error);
+      alert('无法访问摄像头，请确保已授予权限');
+    }
+  };
+
+  // 停止拍摄
+  const handleStopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  // 切换拍摄状态
+  const handleToggleCamera = () => {
+    if (isCameraActive) {
+      handleStopCamera();
+    } else {
+      handleStartCamera();
+    }
+  };
+
+  // 清理摄像头资源
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
+  // 将视频流连接到 video 元素
+  useEffect(() => {
+    const video = videoRef.current;
+    const stream = streamRef.current;
+
+    if (video && stream) {
+      video.srcObject = stream;
+
+      const handleLoadedMetadata = () => {
+        video.play().catch(err => {
+          console.error('视频播放失败:', err);
+        });
+      };
+
+      video.addEventListener('loadedmetadata', handleLoadedMetadata);
+
+      return () => {
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      };
+    }
+  }, [isCameraActive]);
 
   // 上传单个文件
   const uploadFile = async (imageInfo: ImageInfo): Promise<void> => {
@@ -324,6 +394,69 @@ export default function TaskUploadPage() {
               任务ID: {taskId}
             </p>
           </div>
+
+          {/* 实时拍摄区域 */}
+          <Card className="glass-card p-6 mb-6">
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold glow-text mb-2 flex items-center gap-2">
+                <Video className="h-5 w-5 text-purple-400" />
+                实时拍摄
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                使用摄像头实时拍摄并上传图片
+              </p>
+            </div>
+
+            {/* 视频预览区域 */}
+            <div className="relative mb-4 bg-black rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+              {/* 视频元素 - 始终渲染，通过 CSS 控制显示/隐藏 */}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover ${isCameraActive ? 'block' : 'hidden'}`}
+              />
+
+              {/* 未激活时的占位内容 */}
+              {!isCameraActive && (
+                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-900/20 to-blue-900/20">
+                  <VideoOff className="h-16 w-16 text-muted-foreground/50" />
+                </div>
+              )}
+
+              {/* 拍摄状态指示器 */}
+              {isCameraActive && (
+                <div className="absolute top-4 right-4 flex items-center gap-2 bg-black/60 px-3 py-1 rounded-full">
+                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-white text-sm">拍摄中</span>
+                </div>
+              )}
+            </div>
+
+            {/* 拍摄按钮 */}
+            <div className="flex justify-center">
+              <Button
+                onClick={handleToggleCamera}
+                className={`neon-button px-8 ${
+                  isCameraActive ? 'bg-red-600 hover:bg-red-700' : ''
+                }`}
+                size="lg"
+              >
+                {isCameraActive ? (
+                  <>
+                    <VideoOff className="mr-2 h-5 w-5" />
+                    停止拍摄
+                  </>
+                ) : (
+                  <>
+                    <Video className="mr-2 h-5 w-5" />
+                    开始拍摄
+                  </>
+                )}
+              </Button>
+            </div>
+          </Card>
 
           {/* 上传区域 */}
           <Card className="glass-card p-8 mb-6">
