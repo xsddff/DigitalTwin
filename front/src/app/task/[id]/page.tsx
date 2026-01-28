@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { ArrowLeft, Upload, CheckCircle2, XCircle, ChevronRight, ChevronDown, ChevronUp, Cpu, Image as ImageIcon, HardDrive, Activity, RefreshCw, Camera, CameraOff, Video, VideoOff } from 'lucide-react';
+import { ArrowLeft, Upload, CheckCircle2, XCircle, ChevronRight, ChevronDown, ChevronUp, Cpu, Image as ImageIcon, HardDrive, Activity, RefreshCw, Camera, CameraOff, Video, VideoOff, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
 
 // 图片信息类型
 interface ImageInfo {
@@ -37,6 +37,10 @@ export default function TaskUploadPage() {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [isFileListExpanded, setIsFileListExpanded] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [resultsCurrentPage, setResultsCurrentPage] = useState(1);
+
+  // 每页显示的成功文件数量
+  const RESULTS_PER_PAGE = 3;
 
   // 生成粒子效果
   useEffect(() => {
@@ -65,6 +69,15 @@ export default function TaskUploadPage() {
   // 计算总体进度
   const totalProgress = totalCount === 0 ? 0 :
     images.reduce((sum, img) => sum + img.progress, 0) / totalCount;
+
+  // 计算成功文件的总页数
+  const successImages = images.filter(img => img.status === 'success' && img.metadata);
+  const totalResultsPages = Math.ceil(successImages.length / RESULTS_PER_PAGE);
+
+  // 计算当前页的成功文件
+  const currentResultsStartIndex = (resultsCurrentPage - 1) * RESULTS_PER_PAGE;
+  const currentResultsEndIndex = currentResultsStartIndex + RESULTS_PER_PAGE;
+  const currentResultsPageImages = successImages.slice(currentResultsStartIndex, currentResultsEndIndex);
 
   // 获取图片元数据
   const getImageMetadata = (file: File): Promise<{ width: number; height: number; colorSpace: string; format: string }> => {
@@ -688,9 +701,7 @@ export default function TaskUploadPage() {
                 成功上传的文件
               </h3>
               <div className="space-y-3">
-                {images
-                  .filter(img => img.status === 'success' && img.metadata)
-                  .map((img) => (
+                {currentResultsPageImages.map((img) => (
                     <div
                       key={img.id}
                       className="tech-border rounded-lg overflow-hidden"
@@ -751,6 +762,54 @@ export default function TaskUploadPage() {
                     </div>
                   ))}
               </div>
+
+              {/* 翻页控制 */}
+              {totalResultsPages > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t border-white/10">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setResultsCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={resultsCurrentPage === 1}
+                    className="neon-button-secondary"
+                  >
+                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    上一页
+                  </Button>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">
+                      第 {resultsCurrentPage} / {totalResultsPages} 页
+                    </span>
+                    <div className="flex gap-1">
+                      {Array.from({ length: totalResultsPages }, (_, i) => (
+                        <button
+                          key={i + 1}
+                          onClick={() => setResultsCurrentPage(i + 1)}
+                          className={`w-8 h-8 rounded flex items-center justify-center text-sm transition-all ${
+                            resultsCurrentPage === i + 1
+                              ? 'bg-purple-600 text-white neon-button'
+                              : 'bg-white/5 text-muted-foreground hover:bg-white/10'
+                          }`}
+                        >
+                          {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setResultsCurrentPage(p => Math.min(totalResultsPages, p + 1))}
+                    disabled={resultsCurrentPage === totalResultsPages}
+                    className="neon-button-secondary"
+                  >
+                    下一页
+                    <ChevronRightIcon className="h-4 w-4 ml-1" />
+                  </Button>
+                </div>
+              )}
             </Card>
           )}
         </div>
